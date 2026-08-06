@@ -146,3 +146,16 @@ out/
 *~
 .DS_Store
 Thumbs.db
+
+
+##############################
+# Vitis workspace (auto-generated platform/BSP)
+##############################
+**/vitiswsp/*/
+!**/vitiswsp/*/src/
+**/*_domain/bsp/
+**/*_domain/bsp/**
+**/libsrc/
+**/standalone_v*/
+**/*hardware/*.xsa
+*.xsa
