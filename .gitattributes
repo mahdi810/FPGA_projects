@@ -1,0 +1,40 @@
+# Normalise line endings so files stop showing as modified on Windows.
+# Git stores LF internally and checks out CRLF on Windows for text files.
+* text=auto
+
+# Source files: always LF in the repository
+*.c      text eol=lf
+*.h      text eol=lf
+*.py     text eol=lf
+*.v      text eol=lf
+*.sv     text eol=lf
+*.vhd    text eol=lf
+*.vhdl   text eol=lf
+*.xdc    text eol=lf
+*.tcl    text eol=lf
+*.md     text eol=lf
+*.txt    text eol=lf
+*.yml    text eol=lf
+*.json   text eol=lf
+Makefile text eol=lf
+
+# Windows-native scripts keep CRLF
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+
+# Binary - never touch, never diff
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.pdf    binary
+*.bit    binary
+*.bin    binary
+*.elf    binary
+*.xsa    binary
+*.dcp    binary
+*.zip    binary
+*.rar    binary
+*.mat    binary
+*.class  binary

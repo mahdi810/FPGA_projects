@@ -2336,6 +2336,12 @@
           "smartconnect_1/aresetn"
         ]
       },
+      "proc_sys_reset_1_peripheral_aresetn": {
+        "ports": [
+          "proc_sys_reset_1/peripheral_aresetn",
+          "dvi2rgb_0/pRst_n"
+        ]
+      },
       "proc_sys_reset_1_peripheral_reset": {
         "ports": [
           "proc_sys_reset_1/peripheral_reset",
