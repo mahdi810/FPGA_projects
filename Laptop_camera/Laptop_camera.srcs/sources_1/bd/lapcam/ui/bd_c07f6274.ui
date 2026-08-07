@@ -1,0 +1,51 @@
+{
+   "ActiveEmotionalView":"Default View",
+   "Default View_ScaleFactor":"0.484812",
+   "Default View_TopLeft":"-101,-386",
+   "ExpandedHierarchyInLayout":"",
+   "guistr":"# # String gsaved with Nlview 7.5.8 2022-09-21 7111 VDI=41 GEI=38 GUI=JA:10.0 threadsafe
+#  -string -flagsOSRD
+preplace port DDR -pg 1 -lvl 7 -x 2210 -y 310 -defaultsOSRD
+preplace port FIXED_IO -pg 1 -lvl 7 -x 2210 -y 340 -defaultsOSRD
+preplace port TMDS_0 -pg 1 -lvl 0 -x 0 -y 520 -defaultsOSRD
+preplace port hdmi_in_ddc -pg 1 -lvl 7 -x 2210 -y 530 -defaultsOSRD
+preplace portBus hdmi_in_hpd -pg 1 -lvl 7 -x 2210 -y 590 -defaultsOSRD
+preplace inst processing_system7_0 -pg 1 -lvl 6 -x 1950 -y 380 -defaultsOSRD
+preplace inst dvi2rgb_0 -pg 1 -lvl 2 -x 560 -y 550 -defaultsOSRD
+preplace inst proc_sys_reset_1 -pg 1 -lvl 2 -x 560 -y 110 -defaultsOSRD
+preplace inst proc_sys_reset_0 -pg 1 -lvl 1 -x 200 -y 630 -defaultsOSRD
+preplace inst v_vid_in_axi4s_0 -pg 1 -lvl 3 -x 920 -y 200 -defaultsOSRD
+preplace inst xlconstant_0 -pg 1 -lvl 2 -x 560 -y 270 -defaultsOSRD
+preplace inst axi_vdma_0 -pg 1 -lvl 4 -x 1270 -y 360 -defaultsOSRD
+preplace inst smartconnect_0 -pg 1 -lvl 5 -x 1600 -y 360 -defaultsOSRD
+preplace inst smartconnect_1 -pg 1 -lvl 3 -x 920 -y 410 -defaultsOSRD
+preplace inst xlconstant_1 -pg 1 -lvl 6 -x 1950 -y 590 -defaultsOSRD
+preplace netloc processing_system7_0_FCLK_CLK1 1 1 6 390 450 740J 520 NJ 520 NJ 520 NJ 520 2170
+preplace netloc processing_system7_0_FCLK_CLK0 1 0 7 20 430 NJ 430 770 490 1090 480 1460 440 1730 500 2160
+preplace netloc processing_system7_0_FCLK_RESET0_N 1 0 7 30 530 370 330 NJ 330 1050J 230 NJ 230 NJ 230 2180
+preplace netloc dvi2rgb_0_PixelClk 1 1 2 390 10 750
+preplace netloc dvi2rgb_0_pLocked 1 1 2 390 210 730
+preplace netloc proc_sys_reset_0_peripheral_aresetn 1 1 4 380 440 780 500 1080 240 1470J
+preplace netloc proc_sys_reset_1_peripheral_reset 1 2 1 790 110n
+preplace netloc xlconstant_0_dout 1 2 1 NJ 270
+preplace netloc axi_vdma_0_s2mm_introut 1 4 2 1450 450 1740J
+preplace netloc xlconstant_1_dout 1 6 1 NJ 590
+preplace netloc processing_system7_0_DDR 1 6 1 2190J 310n
+preplace netloc processing_system7_0_FIXED_IO 1 6 1 NJ 340
+preplace netloc TMDS_0_1 1 0 2 NJ 520 NJ
+preplace netloc dvi2rgb_0_DDC 1 2 5 NJ 530 NJ 530 NJ 530 NJ 530 NJ
+preplace netloc dvi2rgb_0_RGB 1 2 1 760 130n
+preplace netloc v_vid_in_axi4s_0_video_out 1 3 1 1060 160n
+preplace netloc axi_vdma_0_M_AXI_S2MM 1 4 1 N 340
+preplace netloc processing_system7_0_M_AXI_GP0 1 2 5 790 510 NJ 510 NJ 510 NJ 510 2190
+preplace netloc smartconnect_1_M00_AXI 1 3 1 1070 300n
+preplace netloc smartconnect_0_M00_AXI 1 5 1 N 360
+levelinfo -pg 1 0 200 560 920 1270 1600 1950 2210
+pagesize -pg 1 -db -bbox -sgen -100 0 2370 730
+"
+}
+{
+   "da_board_cnt":"2",
+   "da_clkrst_cnt":"2",
+   "da_ps7_cnt":"1"
+}
