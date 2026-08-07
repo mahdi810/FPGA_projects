@@ -1,291 +1,208 @@
-# HDMI In → Process → HDMI Out on Zynq
+# Notes: HDMI in, process, HDMI out on the PYNQ-Z2
 
-A reference for the components involved, and an honest assessment of what the project
-teaches you about digital image processing.
+Working notes I put together while building the capture side of this project, so
+I'd have somewhere to look when I extend it to do actual processing. Everything
+here assumes PYNQ-Z2 and Vivado/Vitis 2023.1, since that's what I have.
 
-Target hardware assumed: PYNQ-Z2 (Zynq-7020), Vivado + Vitis.
+## The basic idea
 
----
-
-## Part 1 — The data path
-
-### The shape of the problem
-
-Video arrives on HDMI as a serial stream, becomes pixels, gets modified, becomes a serial
-stream again, and leaves on HDMI. Everything in the block design exists to serve one of
-those four transitions.
+Video comes in on HDMI as a serial stream, gets turned into pixels, gets
+modified, gets turned back into a serial stream, goes out on HDMI. Four
+transitions. Every block in the design exists to serve one of them.
 
 ```
-HDMI in → decode → [ PROCESSING ] → encode → HDMI out
+HDMI in -> decode -> [ processing ] -> encode -> HDMI out
 ```
 
-The interesting design decision is what sits in the middle, and there are two fundamentally
-different answers.
+The only interesting decision is what goes in the middle, and there are really
+two answers.
 
----
+## Option A: keep it streaming
 
-### Architecture A — Streaming (processing lives in the fabric)
-
-Pixels flow continuously from input to output. Nothing is ever stored as a whole frame.
-Your processing block sits inline and transforms pixels as they pass.
+Pixels flow straight through. Nothing is ever stored as a whole frame. The
+processing block sits inline and modifies pixels as they go past.
 
 ```
-dvi2rgb → Video In to AXI4-Stream → [your IP] → AXI4-Stream to Video Out → rgb2dvi
+dvi2rgb -> Video In to AXI4-Stream -> [my IP] -> AXI4-Stream to Video Out -> rgb2dvi
 ```
 
-**Latency:** a few lines of video, typically under 100 microseconds.
-**Memory:** none, or a handful of line buffers in BRAM.
-**Constraint:** you must consume and produce one pixel per clock, forever. You cannot
-pause to think.
+Latency is a few lines of video, so well under a millisecond. Memory cost is
+zero, or a few line buffers in BRAM. The catch is that you have to accept and
+produce one pixel every clock cycle forever. You can't stall to think about it.
 
-This is what real-time video hardware actually looks like. It's also the version that
-teaches you the most about FPGA design, because the "one pixel per clock, no exceptions"
-constraint forces you to think in pipelines rather than loops.
+That constraint is the whole reason this approach is worth doing. It forces you
+to build pipelines instead of loops, which is the actual difference between
+writing software and writing hardware.
 
-**Suitable for:** point operations, convolutions, colour space conversion, thresholding,
-gamma, edge detection, any filter with a small local neighbourhood.
+Works for: point operations, small convolutions, colour conversion,
+thresholding, gamma, edge detection.
 
-**Not suitable for:** anything needing the whole frame before it can decide — histogram
-equalisation, frame differencing, geometric warps, rotation.
+Doesn't work for: anything that needs the whole frame before it can decide.
+Histogram equalisation, frame differencing, rotation, geometric warps.
 
----
+## Option B: go through DDR
 
-### Architecture B — Frame buffered (processing goes through DDR)
-
-Pixels are written into DDR as complete frames, processed there, and read back out.
+Write complete frames to memory, process them there, read them back out.
 
 ```
-dvi2rgb → Video In to AXI4-Stream → VDMA (write) → DDR
-                                                     ↓
-                                          [CPU or accelerator]
-                                                     ↓
-DDR → VDMA (read) → AXI4-Stream to Video Out → rgb2dvi
+dvi2rgb -> Video In to AXI4-Stream -> VDMA write -> DDR
+                                                      |
+                                            CPU or accelerator
+                                                      |
+DDR -> VDMA read -> AXI4-Stream to Video Out -> rgb2dvi
 ```
 
-**Latency:** at least one frame, so 16–33 ms. Often two or three.
-**Memory:** several megabytes of DDR, plus real bandwidth pressure.
-**Freedom:** you can do anything, in any order, taking as long as you like.
+Costs at least one frame of latency, usually two or three. Eats megabytes of DDR
+and real bandwidth. In exchange you can do anything, in any order, taking as
+long as you want.
 
-**Suitable for:** algorithms needing global information or multiple passes, anything
-you want to prototype in C first, anything involving frame-to-frame comparison.
+This is what I built for the Ethernet streaming version, minus the read side.
 
----
+## Option C: both
 
-### Architecture C — Hybrid (what most real systems do)
+Capture to DDR, run an accelerator that reads from DDR and writes back, display
+from DDR. The CPU only sets up the DMA engines and never touches a pixel.
 
-Capture to DDR, run a hardware accelerator that reads from DDR and writes back to DDR,
-display from DDR. The CPU only orchestrates — it configures the DMA engines and never
-touches pixel data.
+This is what real systems do and it's what I'm aiming at eventually.
 
-This is the architecture worth aiming for eventually. It combines the flexibility of
-frame buffering with the throughput of hardware processing.
+## Blocks I need
 
----
+Input side, always:
 
-## Part 2 — Component list
+- `dvi2rgb` (Digilent). Deserialises TMDS, decodes to 24-bit RGB, recovers the
+  pixel clock, and serves the EDID over the DDC pins.
+- Something driving HPD high. I used an `xlconstant`. Without it the source
+  never even looks for a monitor.
+- `Video In to AXI4-Stream`. Turns RGB plus HSync/VSync/DE into a stream with
+  TUSER marking start of frame and TLAST marking end of line. Also does the
+  clock domain crossing.
+- `Video Timing Controller` in detect mode. Optional. Measures the incoming
+  timing so software can find out the resolution instead of assuming it. I
+  hardcoded 720p instead, which I'll regret later.
 
-### Input side (required in all architectures)
+Output side:
 
-| Component | Role | Notes |
+- `AXI4-Stream to Video Out`. Mirror image of the input converter.
+- `Video Timing Controller` in generate mode, for the output syncs.
+- `rgb2dvi` (Digilent). Encodes back to TMDS.
+- A pixel clock for the output. Reuse the recovered input clock if it's a
+  straight passthrough, otherwise generate it with a Clocking Wizard.
+
+The middle:
+
+- Custom HLS IP is the main option. Write C with `hls::stream` interfaces and
+  let Vitis HLS build the pipeline.
+- Custom RTL if I want to understand what HLS is doing. Slower to write.
+- Xilinx `Video Processing Subsystem` for scaling and colour conversion. Not the
+  interesting part, but saves time.
+- Two VDMAs if I go the frame-buffered route.
+
+Infrastructure, regardless:
+
+- Zynq PS, two or three `Processor System Reset` blocks (one per clock domain),
+  two SmartConnects, `xlconcat` for interrupts.
+
+## Clock domains
+
+This is the part that confused me longest, so writing it down.
+
+A passthrough design has three unrelated clocks:
+
+1. Input pixel clock, recovered from the cable. The source decides its
+   frequency. I don't control it and it drifts.
+2. AXI clock, 100 MHz from the PS PLL.
+3. Output pixel clock, whatever the output resolution needs.
+
+For pure passthrough at the same resolution you can reuse clock 1 as clock 3.
+The moment you scale, change resolution, or go through DDR, they have to be
+separate.
+
+Every boundary between them needs an async FIFO. That's why both video converter
+blocks have an "Independent Clocks" option, and why leaving it off produces a
+design that builds fine and outputs garbage.
+
+## Bandwidth
+
+Worth knowing before designing anything:
+
+| Format | Pixel clock | Data rate |
 |---|---|---|
-| `dvi2rgb` (Digilent) | HDMI receiver | Deserialises TMDS, decodes to 24-bit RGB, recovers the pixel clock, serves the EDID over DDC |
-| `xlconstant` → HPD pin | Hot-plug detect | Must be driven high or the source never sends video |
-| `Video In to AXI4-Stream` | Format conversion | Turns RGB + HSync/VSync/DE into an AXI4-Stream with `TUSER` = start of frame, `TLAST` = end of line. Also crosses from the pixel clock domain to the AXI clock domain |
-| `Video Timing Controller` (detect mode) | Resolution discovery | Optional but useful — measures the incoming timing so software can learn the resolution rather than assuming it |
+| 640x480 @60 | 25.2 MHz | 55 MB/s |
+| 1280x720 @60 | 74.25 MHz | 166 MB/s |
+| 1920x1080 @60 | 148.5 MHz | 373 MB/s |
+| 3840x2160 @60 | 594 MHz | 1.5 GB/s |
 
-### Output side (required in all architectures)
+The Zynq-7020's DDR3 gives roughly 1000 to 1200 MB/s in practice.
 
-| Component | Role | Notes |
-|---|---|---|
-| `AXI4-Stream to Video Out` | Format conversion | The mirror of the input converter — regenerates sync signals from the stream |
-| `Video Timing Controller` (generate mode) | Timing generation | Produces HSync/VSync/blanking for the output resolution |
-| `rgb2dvi` (Digilent) | HDMI transmitter | Encodes RGB back to TMDS and serialises it |
-| Clock source for the output pixel clock | Pixel clock | Either reuse the recovered input clock (passthrough only), or generate it with a Clocking Wizard / Dynamic Clock IP if the output resolution differs from the input |
+So a frame-buffered 1080p60 design needs 373 in plus 373 out, about 750 MB/s,
+which is most of the budget before the processing block reads or writes
+anything. Streaming costs nothing, which is the real argument for it.
 
-### Processing options for the middle
+## Order I'm planning to build things
 
-| Component | Role | When to use |
-|---|---|---|
-| **Custom HLS IP** | Your algorithm | The main event. Write C/C++ with `hls::stream` interfaces, let Vitis HLS build the pipeline. This is where you learn |
-| **Custom RTL** | Your algorithm, the hard way | Full control, much slower to develop. Worth doing once to understand what HLS generates |
-| `Video Processing Subsystem` (Xilinx) | Scaling, colour conversion, deinterlacing | Ready-made, well tested. Good for the plumbing around your own block |
-| `AXI VDMA` ×2 | Frame buffering | One write channel for capture, one read channel for display. Genlock keeps them from colliding |
-| PS ARM cores | Software processing | Fine for prototyping, far too slow for real-time at any real resolution |
+Each step adds one new idea. Skipping ahead didn't work for me.
 
-### Infrastructure (needed regardless)
+1. Passthrough, no processing at all. Proves timing, TMDS, EDID, clocking.
+2. Colour inversion, `255 - pixel`. Just proves I can insert a block.
+3. RGB to grayscale. Fixed point arithmetic.
+4. Brightness and contrast via a lookup table in BRAM, with the level set from
+   software over AXI4-Lite.
+5. 3x3 blur. This is the one that matters. You need three rows at once but
+   pixels arrive one row at a time, so you have to build a line buffer and slide
+   a window across. Sobel, median, erosion, dilation and Harris corners all use
+   the same structure, so once this works the rest are variations.
+6. Sobel edge detection.
+7. Median filter. Sorting networks, which have no software equivalent.
+8. Capture to DDR and display from DDR. VDMA on both sides, genlock.
+9. Frame differencing for motion detection.
+10. Histogram equalisation. Two passes.
+11. Corner detection.
+12. Scaling and rotation. Non-raster memory access.
 
-| Component | Role |
-|---|---|
-| `ZYNQ7 Processing System` | DDR controller, CPU, Ethernet, and the AXI ports between PS and PL |
-| `Processor System Reset` ×2–3 | One per clock domain. Resets must be released synchronously with the domain they reset |
-| `AXI SmartConnect` ×2 | Protocol conversion (PS speaks AXI3, your IP speaks AXI4/AXI4-Lite), address decoding, arbitration |
-| `xlconcat` | Bundles multiple interrupt lines onto `IRQ_F2P` |
+Steps 1 and 2 are most of the difficulty in getting started. Step 5 is where the
+actual learning is.
 
----
+## Practical stuff I learned the hard way
 
-## Part 3 — Clock domains
+Write the processing block in HLS, not RTL, at least at first. Iteration speed
+matters more than optimal output while you're still figuring out what you're
+building. Interfaces should be `hls::stream<ap_axiu<24,1,1,1>>` to match
+AXI4-Stream video, with TUSER as start of frame and TLAST as end of line.
 
-This is the part that causes the most confusion, so it's worth stating plainly.
+Get passthrough working before anything else. If the input appears unchanged on
+a monitor, then clocking, EDID, TMDS decode and output encoding are all proven,
+and every bug after that is in your own block. I skipped this and spent a long
+time chasing a problem that turned out to be an unconnected reset pin on
+dvi2rgb, which a working passthrough would have caught immediately.
 
-A passthrough design has **three** unrelated clocks:
+Add a Video Test Pattern Generator early. Being able to switch between real HDMI
+and a known synthetic pattern with a register write separates input problems
+from processing problems in seconds.
 
-1. **Input pixel clock** — recovered from the HDMI cable. Its frequency is decided by the
-   source device. You do not control it and it drifts.
-2. **AXI clock** — typically 100–150 MHz, generated by the PS PLL. Everything AXI runs here.
-3. **Output pixel clock** — whatever your output resolution requires.
+Put an ILA on the AXI4-Stream. Watching TVALID, TREADY, TUSER and TLAST tells
+you straight away whether pixels are moving and where frames start. Most black
+screen problems are obvious this way.
 
-In a pure passthrough at identical resolution you can reuse clock 1 for clock 3. As soon as
-you scale, change resolution, or buffer through DDR, they must be separate.
+Respect backpressure. If your block deasserts TREADY even briefly, pixels back
+up into the input FIFO and eventually overflow. A streaming block has to take a
+pixel every cycle.
 
-Every boundary between these domains needs an asynchronous FIFO, which is why both video
-converter blocks have an "Independent Clocks" option. Enabling it is not optional in any
-real design.
+Handle resolution changes eventually. Real sources change resolution on the fly.
+Detecting it with the VTC is better than assuming, which is what I currently do.
 
----
+## Why I think this is worth doing
 
-## Part 4 — Bandwidth reality check
+Mostly because of the way it forces you to think. In software you load a frame
+into an array and index it wherever you like. Here, pixels arrive one per clock
+in raster order and you can never go back. Restructuring an algorithm around
+that is the actual skill, and it applies to anything with high rate data and
+real time constraints, not just video.
 
-Worth internalising before designing anything:
+The things it does not teach: modern computer vision, algorithm design, or
+anything about real camera pipelines like demosaicing, auto exposure or lens
+correction. HDMI input skips all of that.
 
-| Format | Pixel rate | Raw data rate |
-|---|---|---|
-| 640×480 @60 | 25.2 MHz | 55 MB/s |
-| 1280×720 @60 | 74.25 MHz | 166 MB/s |
-| 1920×1080 @60 | 148.5 MHz | 373 MB/s |
-| 3840×2160 @60 | 594 MHz | 1.5 GB/s |
-
-A Zynq-7020's DDR3 delivers roughly 1000–1200 MB/s of usable bandwidth in practice.
-
-A frame-buffered 1080p60 design needs 373 MB/s in **plus** 373 MB/s out — about
-750 MB/s, most of your budget, before your processing block reads or writes anything.
-This is why streaming architectures matter: they cost zero bandwidth.
-
----
-
-## Part 5 — How useful is this for image processing experience?
-
-### What it genuinely teaches you
-
-**Video timing as a first-class concept.** Blanking intervals, sync polarity, pixel clocks,
-the difference between active and total resolution. Every video system on earth uses these,
-whether it's a camera sensor, MIPI, SDI, or DisplayPort. Learning them on HDMI transfers
-directly.
-
-**Streaming dataflow thinking.** The single most valuable habit this project builds. Software
-image processing loads a frame into an array and indexes it freely. Hardware processing sees
-pixels arrive in raster order, one per clock, and cannot go back. Every algorithm has to be
-restructured around that. Once you can think this way you can implement things in hardware
-that you previously only knew as software.
-
-**Line buffers and windowing.** The moment you attempt a 3×3 filter you discover you need
-three rows available simultaneously, but pixels arrive one row at a time. Building a line
-buffer that shifts a 3×3 window across the image is the single most important structure in
-hardware image processing — Sobel, Gaussian blur, median, erosion, dilation, Harris corners
-all use it.
-
-**Memory bandwidth as a design constraint.** In software, memory is free and infinite. Here
-you count bytes per second and discover you don't have enough. This changes how you think
-about algorithms permanently.
-
-**Clock domain crossing.** Genuinely important and genuinely subtle. Metastability, async
-FIFOs, why a signal crossing domains needs synchronisers.
-
-**Timing closure and pipelining.** Adding a stage to hit a frequency target teaches you what
-"critical path" really means.
-
-**Hardware/software partitioning.** Deciding what the ARM core does versus what the fabric
-does is the central skill in SoC design.
-
-### What it does not teach you
-
-Be clear-eyed about this:
-
-- **Modern computer vision.** Nothing here touches deep learning, feature descriptors,
-  camera calibration, or 3D reconstruction. Those are algorithm domains, mostly learned in
-  Python.
-- **Algorithm design.** You'll implement algorithms someone else invented. That's the correct
-  order to learn in, but don't confuse implementation skill with algorithmic skill.
-- **Production video pipelines.** Real systems use MIPI CSI sensors, ISP pipelines
-  (demosaicing, auto-exposure, lens correction, tone mapping), and compression. HDMI input
-  skips all of it.
-
-### Where this experience is actually valued
-
-FPGA video processing remains a real, if specialised, field:
-
-- **Machine vision / industrial inspection** — high frame rate, low latency, deterministic.
-  A strong FPGA niche.
-- **Medical imaging** — endoscopy, ultrasound, surgical displays. Latency and reliability
-  requirements that GPUs struggle with.
-- **Broadcast and professional video** — SDI infrastructure, real-time effects, format
-  conversion. Heavily FPGA-based.
-- **Automotive ADAS** — though increasingly moving to dedicated SoCs.
-- **Defence and aerospace** — sensor fusion, targeting, imaging. FPGAs dominate.
-- **Scientific instrumentation** — high-speed cameras, particle detectors.
-
-Honest caveat: a lot of general-purpose vision work has moved to GPUs and embedded SoCs
-with hardware accelerators. FPGA video is not the mainstream path into computer vision.
-It *is* a strong path into embedded hardware engineering, and it's differentiating —
-far fewer engineers can do it, and the ones who can are hard to replace.
-
-### The strongest argument for doing it
-
-The skills transfer sideways more than they transfer forwards. Someone who has built a
-working video pipeline on a Zynq can build a radar pipeline, an audio DSP chain, a
-high-speed data acquisition system, or an ML inference accelerator. The specific knowledge
-is about video; the general knowledge is about moving high-rate data through hardware
-under real-time constraints, and that is one of the most transferable skills in embedded
-engineering.
-
----
-
-## Part 6 — Suggested progression
-
-Each step adds exactly one new concept. Don't skip.
-
-| # | Project | New concept introduced |
-|---|---|---|
-| 1 | HDMI in → HDMI out passthrough | Video timing, TMDS, EDID, clocking. No processing at all |
-| 2 | Colour inversion (`255 - pixel`) | Inserting an IP into the stream. Purely combinational, no memory |
-| 3 | RGB → grayscale | Fixed-point arithmetic in hardware |
-| 4 | Brightness/contrast via lookup table | BRAM as a LUT, runtime parameters over AXI4-Lite |
-| 5 | Threshold with software-set level | Software controlling hardware through registers |
-| 6 | 3×3 blur | **Line buffers and window generation** — the key structural lesson |
-| 7 | Sobel edge detection | Multiple parallel kernels, magnitude computation |
-| 8 | Median filter | Sorting networks — combinational algorithms that have no software analogue |
-| 9 | Capture to DDR, display from DDR | VDMA, genlock, frame buffer management |
-| 10 | Frame differencing / motion detection | Multi-frame algorithms, DDR bandwidth pressure |
-| 11 | Histogram + equalisation | Two-pass algorithms, statistics gathered in hardware |
-| 12 | Corner detection (Harris/FAST) | Real feature extraction, deep pipelines |
-| 13 | Scaling / rotation | Non-raster memory access patterns, interpolation |
-
-Steps 1–2 are most of the difficulty in getting started. Steps 6–8 are where the real
-learning is. Steps 10+ are where it starts resembling professional work.
-
----
-
-## Part 7 — Practical advice
-
-**Write the processing block in Vitis HLS, not RTL.** You'll iterate ten times faster, and
-the generated pipelines are usually as good as hand-written. Learn RTL by inspecting what
-HLS produces. Interfaces should be `hls::stream<ap_axiu<24,1,1,1>>` to match AXI4-Stream
-video, with `TUSER` carrying start-of-frame and `TLAST` carrying end-of-line.
-
-**Get passthrough working before anything else.** A design that displays the input unchanged
-proves your clocking, EDID, TMDS decode, and output encoding all work. Every subsequent bug
-is then narrowed to your processing block.
-
-**Add a Video Test Pattern Generator.** Switching between "real HDMI input" and "known
-synthetic pattern" with a register write isolates input problems from processing problems
-instantly.
-
-**Instrument with an ILA on the AXI4-Stream.** Watching `TVALID`, `TREADY`, `TUSER`, `TLAST`
-tells you immediately whether pixels are flowing and where frames begin. Most "black screen"
-bugs are visible in five seconds this way.
-
-**Respect backpressure.** If your block deasserts `TREADY` even briefly, pixels back up into
-the input FIFO and eventually overflow — the picture tears or drops frames. A streaming video
-block must accept a pixel every single clock cycle.
-
-**Handle resolution changes.** Real sources change resolution on the fly. Detect it with the
-Video Timing Controller and reconfigure rather than assuming.
+Where it's useful: machine vision and industrial inspection, medical imaging,
+broadcast, some automotive, defence, scientific instrumentation. It's a
+specialised field rather than the mainstream route into vision work, most of
+which has moved to GPUs. But few people can do it, which is the point.
