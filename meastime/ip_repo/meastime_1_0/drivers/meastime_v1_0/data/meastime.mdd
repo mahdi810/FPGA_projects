@@ -1,0 +1,10 @@
+
+
+OPTION psf_version = 2.1;
+
+BEGIN DRIVER meastime
+	OPTION supported_peripherals = (meastime);
+	OPTION copyfiles = all;
+	OPTION VERSION = 1.0;
+	OPTION NAME = meastime;
+END DRIVER
