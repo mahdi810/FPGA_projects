@@ -1,161 +1,171 @@
-##############################
-# Vivado / Xilinx
-##############################
+# ============================================================
+# Ignore everything by default
+# ============================================================
+
+*
+
+
+# ============================================================
+# Git
+# ============================================================
+
+!.gitignore
+
+
+# ============================================================
+# Vivado / HDL source files to KEEP
+# ============================================================
+
+!*.v
+!*.sv
+!*.svh
+!*.vh
+!*.vhd
+!*.tcl
+!*.xdc
+!*.xci
+
+!*.h
+!*.c
+!*.cc
+!*.cpp
+!*.inc
+!*.py
+
+!component.xml
+!.project
+!.cproject
+
+
+# ============================================================
+# Allow directories so Git can reach the files above
+# ============================================================
+
+!*/
+
+
+# ============================================================
+# Vivado generated files/directories
+# ============================================================
+
+**/*.gen/
+**/*.cache/
+**/*.hw/
+**/*.runs/
+**/*.sim/
+**/*.srcs/
+**/*.ip_user_files/
+
+**/.Xil/
+**/ip_user_files/
+
+**/webtalk/
+**/webtalk_*.xml/
+
+**/sim/
+**/synth/
+**/gen/
+**/tmp/
+**/cache/
+
+
+# ============================================================
+# Vivado logs and temporary files
+# ============================================================
+
+*.log
 *.jou
-*.log
 *.str
-*.zip
-*.rpt
-*.tcl.bak
-.Xil/
-.metadata/
-*.cache/
-*.hw/
-*.ip_user_files/
-*.gen/
-*.sim/
-*.srcs/*.xml
-*.runs/
-*.data/
-webtalk*
-usage_statistics_webtalk.html
-vivado*.jou
-vivado*.log
-vivado_pid*.str
-xvlog.pb
-xvlog.log
-xelab.pb
-xelab.log
-xsim.dir/
-*.wdb
-*.wcfg
-*.pb
-.jobs.dat
-*.hbs
-fsm_encoding.os
-*.bit
-*.bin
-*.mcs
-*.prm
-*.ltx
-*.debug_nets
-*.export.log
+*.dmp
+*.tmp
+*.bak
 
-# Vitis / SDK / PetaLinux
-*.metadata/
-sdk/
-Debug/
-Release/
-*.elf.bak
-project_spec/
-build/
-images/linux/
-tmp/
-sstate-cache/
-downloads/
-*.bbappend~
+**/*.wcfg
 
-##############################
-# GHDL / VHDL simulation
-##############################
+
+# ============================================================
+# Vitis generated files
+# ============================================================
+
+**/vitiswsp/
+**/bsp/
+**/libsrc/
+
+**/*_BSP/
+**/*_HW/
+
+**/*_hardware/
+**/*_platform/
+**/*_domain/
+
+**/.metadata/
+**/RemoteSystemsTempFiles/
+
+
+# ============================================================
+# Vitis build output
+# ============================================================
+
+**/Debug/
+**/Release/
+**/debug/
+**/release/
+
+
+# ============================================================
+# Vitis generated platform/domain files
+# ============================================================
+
+**/ps7_cortexa9_0/
+**/psu_cortexa53_0/
+**/psu_cortexr5_0/
+
+
+# ============================================================
+# Generated documentation / examples
+# ============================================================
+
+**/doc/
+**/demo_tb/
+**/misc/
+**/hdl/
+
+
+# ============================================================
+# C/C++ build files
+# ============================================================
+
 *.o
-*.cf
-work-obj*.cf
-work/
-*.ghw
-*.vcd
-*.fst
-*.lst
-*.wave
-e~*.o
-gh_*
-
-##############################
-# C / C++
-##############################
 *.obj
-*.exe
-*.out
 *.a
-*.lib
 *.so
-*.so.*
-*.dylib
 *.dll
-*.d
-*.i
-*.ii
-*.s
-*.gch
-*.pch
-*.map
-*.elf
-core
+*.exe
 
-##############################
-# Make / build systems
-##############################
-Makefile.bak
-*.mk.bak
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Testing/
-build/
-_build/
-out/
 
-##############################
-# LaTeX
-##############################
-*.aux
-*.bbl
-*.bcf
-*.blg
-*.fdb_latexmk
-*.fls
-*.lof
-*.log
-*.lot
-*.out
-*.run.xml
-*.synctex.gz
-*.toc
-*.nav
-*.snm
-*.vrb
-*.xdv
-*.idx
-*.ilg
-*.ind
-*.acn
-*.acr
-*.alg
-*.glg
-*.glo
-*.gls
-*.ist
-*.loe
+# ============================================================
+# Python
+# ============================================================
 
-##############################
-# Editors / OS junk
-##############################
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+
+# ============================================================
+# IDE files
+# ============================================================
+
 .vscode/
 .idea/
-*.swp
-*~
+
+
+# ============================================================
+# Operating system files
+# ============================================================
+
 .DS_Store
 Thumbs.db
-
-
-##############################
-# Vitis workspace (auto-generated platform/BSP)
-##############################
-**/vitiswsp/*/
-!**/vitiswsp/*/src/
-**/*_domain/bsp/
-**/*_domain/bsp/**
-**/libsrc/
-**/standalone_v*/
-**/*hardware/*.xsa
-*.xsa
+desktop.ini
